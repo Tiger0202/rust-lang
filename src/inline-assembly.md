@@ -186,7 +186,9 @@ After the `asm!` has executed, outputs are written to in left to right order.
 This is significant if two outputs point to the same place: that place will contain the value of the rightmost output.
 
 r[asm.operand-type.global_asm-restriction]
-Since `global_asm!` exists outside a function, it can only use `sym` and `const` operands.
+
+Since `global_asm!` exists outside a function, it can only use `sym` operands.
+
 
 ## Register operands
 
@@ -536,12 +538,16 @@ r[asm.options.supported-options.pure]
   The `pure` option must be combined with either the `nomem` or `readonly` options, otherwise a compile-time error is emitted.
 
 r[asm.options.supported-options.nomem]
-- `nomem`: The `asm!` block does not read from or write to any memory accessible outside of the `asm!` block.
+
+- `nomem`: The `asm!` blocks does not read or write to any memory.
+
   This allows the compiler to cache the values of modified global variables in registers across the `asm!` block since it knows that they are not read or written to by the `asm!`.
   The compiler also assumes that this `asm!` block does not perform any kind of synchronization with other threads, e.g. via fences.
 
 r[asm.options.supported-options.readonly]
-- `readonly`: The `asm!` block does not write to any memory accessible outside of the `asm!` block.
+
+- `readonly`: The `asm!` block does not write to any memory.
+
   This allows the compiler to cache the values of unmodified global variables in registers across the `asm!` block since it knows that they are not written to by the `asm!`.
   The compiler also assumes that this `asm!` block does not perform any kind of synchronization with other threads, e.g. via fences.
 
@@ -655,8 +661,8 @@ r[asm.rules.preserved-registers]
     - Vector extension state (`vtype`, `vl`, `vcsr`).
   - LoongArch
     - Floating-point condition flags in `$fcc[0-7]`.
-  - s390x
-    - The condition code register `cc`.
+
+
 
 r[asm.rules.x86-df]
 - On x86, the direction flag (DF in `EFLAGS`) is clear on entry to an asm block and must be clear on exit.
@@ -666,8 +672,6 @@ r[asm.rules.x86-x87]
 - On x86, the x87 floating-point register stack must remain unchanged unless all of the `st([0-7])` registers have been marked as clobbered with `out("st(0)") _, out("st(1)") _, ...`.
   - If all x87 registers are clobbered then the x87 register stack is guaranteed to be empty upon entering an `asm` block. Assembly code must ensure that the x87 register stack is also empty when exiting the asm block.
 
-r[asm.rules.arm64ec]
-- On arm64ec, [call checkers with appropriate thunks](https://learn.microsoft.com/en-us/windows/arm/arm64ec-abi#authoring-arm64ec-in-assembly) are mandatory when calling functions.
 
 r[asm.rules.only-on-exit]
 - The requirement of restoring the stack pointer and non-output registers to their original value only applies when exiting an `asm!` block.
