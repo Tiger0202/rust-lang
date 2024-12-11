@@ -156,20 +156,20 @@ temporary variable that holds the result of that expression when used in a
 Apart from lifetime extension, the temporary scope of an expression is the
 smallest scope that contains the expression and is one of the following:
 
-* The entire function body.
+* The entire function.
 * A statement.
-* The body of a [`if`], [`while`] or [`loop`] expression.
+* The body of an [`if`], [`while`] or [`loop`] expression.
 * The `else` block of an `if` expression.
 * The condition expression of an `if` or `while` expression, or a `match`
   guard.
-* The expression for a match arm.
+* The body expression for a match arm.
 * The second operand of a [lazy boolean expression].
 
 > **Notes**:
 >
 > Temporaries that are created in the final expression of a function
-> body are dropped *after* any named variables bound in the function body, as
-> there is no smaller enclosing temporary scope.
+> body are dropped *after* any named variables bound in the function body.
+> Their drop scope is the entire function, as there is no smaller enclosing temporary scope.
 >
 > The [scrutinee] of a `match` expression is not a temporary scope, so
 > temporaries in the scrutinee can be dropped after the `match` expression. For
@@ -271,8 +271,9 @@ let x = &mut 0;
 println!("{}", x);
 ```
 
-If a borrow, dereference, field, or tuple indexing expression has an extended
-temporary scope then so does its operand. If an indexing expression has an
+If a [borrow][borrow expression], [dereference][dereference expression],
+[field][field expression], or [tuple indexing expression] has an extended
+temporary scope then so does its operand. If an [indexing expression] has an
 extended temporary scope then the indexed expression also has an extended
 temporary scope.
 
@@ -283,7 +284,7 @@ An *extending pattern* is either
 * An [identifier pattern] that binds by reference or mutable reference.
 * A [struct][struct pattern], [tuple][tuple pattern], [tuple struct][tuple
   struct pattern], or [slice][slice pattern] pattern where at least one of the
-  direct subpatterns is a extending pattern.
+  direct subpatterns is an extending pattern.
 
 So `ref x`, `V(ref x)` and `[ref x, y]` are all extending patterns, but `x`,
 `&ref x` and `&(ref x,)` are not.
@@ -384,8 +385,12 @@ variable or field from being dropped automatically.
 [block expression]: expressions/block-expr.md
 [borrow expression]: expressions/operator-expr.md#borrow-operators
 [cast expression]: expressions/operator-expr.md#type-cast-expressions
+[dereference expression]: expressions/operator-expr.md#the-dereference-operator
+[field expression]: expressions/field-expr.md
+[indexing expression]: expressions/array-expr.md#array-and-slice-indexing-expressions
 [struct expression]: expressions/struct-expr.md
 [tuple expression]: expressions/tuple-expr.md#tuple-expressions
+[tuple indexing expression]: expressions/tuple-expr.md#tuple-indexing-expressions
 
 [`for`]: expressions/loop-expr.md#iterator-loops
 [`if let`]: expressions/if-expr.md#if-let-expressions

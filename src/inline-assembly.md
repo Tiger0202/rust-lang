@@ -11,12 +11,14 @@ Support for inline assembly is stable on the following architectures:
 - ARM
 - AArch64
 - RISC-V
+- LoongArch
 
 The compiler will emit an error if `asm!` is used on an unsupported target.
 
 ## Example
 
 ```rust
+# #[cfg(target_arch = "x86_64")] {
 use std::arch::asm;
 
 // Multiply x by 6 using shifts and adds
@@ -32,6 +34,7 @@ unsafe {
     );
 }
 assert_eq!(x, 4 * 6);
+# }
 ```
 
 ## Syntax
@@ -41,17 +44,16 @@ The following ABNF specifies the general syntax:
 ```text
 format_string := STRING_LITERAL / RAW_STRING_LITERAL
 dir_spec := "in" / "out" / "lateout" / "inout" / "inlateout"
-reg_spec := <register class> / "<explicit register>"
+reg_spec := <register class> / "\"" <explicit register> "\""
 operand_expr := expr / "_" / expr "=>" expr / expr "=>" "_"
-reg_operand := dir_spec "(" reg_spec ")" operand_expr
-operand := reg_operand
+reg_operand := [ident "="] dir_spec "(" reg_spec ")" operand_expr
 clobber_abi := "clobber_abi(" <abi> *("," <abi>) [","] ")"
 option := "pure" / "nomem" / "readonly" / "preserves_flags" / "noreturn" / "nostack" / "att_syntax" / "raw"
 options := "options(" option *("," option) [","] ")"
-asm := "asm!(" format_string *("," format_string) *("," [ident "="] operand) *("," clobber_abi) *("," options) [","] ")"
-global_asm := "global_asm!(" format_string *("," format_string) *("," [ident "="] operand) *("," options) [","] ")"
+operand := reg_operand / clobber_abi / options
+asm := "asm!(" format_string *("," format_string) *("," operand) [","] ")"
+global_asm := "global_asm!(" format_string *("," format_string) *("," operand) [","] ")"
 ```
-
 
 ## Scope
 
@@ -74,8 +76,7 @@ An `asm!` invocation may have one or more template string arguments; an `asm!` w
 The expected usage is for each template string argument to correspond to a line of assembly code.
 All template string arguments must appear before any other arguments.
 
-As with format strings, named arguments must appear after positional arguments.
-Explicit [register operands](#register-operands) must appear at the end of the operand list, after named arguments if any.
+As with format strings, positional arguments must appear before named arguments and explicit [register operands](#register-operands).
 
 Explicit register operands cannot be used by placeholders in the template string.
 All other named and positional operands must appear at least once in the template string, otherwise a compiler error is generated.
@@ -123,12 +124,17 @@ Several types of operands are supported:
 * `inlateout(<reg>) <expr>` / `inlateout(<reg>) <in expr> => <out expr>`
   - Identical to `inout` except that the register allocator can reuse a register allocated to an `in` (this can happen if the compiler knows the `in` has the same initial value as the `inlateout`).
   - You should only write to the register after all inputs are read, otherwise you may clobber an input.
+* `sym <path>`
+  - `<path>` must refer to a `fn` or `static`.
+  - A mangled symbol name referring to the item is substituted into the asm template string.
+  - The substituted string does not include any modifiers (e.g. GOT, PLT, relocations, etc).
+  - `<path>` is allowed to point to a `#[thread_local]` static, in which case the asm code can combine the symbol with relocations (e.g. `@plt`, `@TPOFF`) to read from thread-local data.
 
 Operand expressions are evaluated from left to right, just like function call arguments.
 After the `asm!` has executed, outputs are written to in left to right order.
 This is significant if two outputs point to the same place: that place will contain the value of the rightmost output.
 
-Since `global_asm!` exists outside a function, it cannot use input/output operands.
+Since `global_asm!` exists outside a function, it can only use `sym` operands.
 
 ## Register operands
 
@@ -159,8 +165,10 @@ Here is the list of currently supported register classes:
 | x86 | `ymm_reg` | `ymm[0-7]` (x86) `ymm[0-15]` (x86-64) | `x` |
 | x86 | `zmm_reg` | `zmm[0-7]` (x86) `zmm[0-31]` (x86-64) | `v` |
 | x86 | `kreg` | `k[1-7]` | `Yk` |
+| x86 | `kreg0` | `k0` | Only clobbers |
 | x86 | `x87_reg` | `st([0-7])` | Only clobbers |
 | x86 | `mmx_reg` | `mm[0-7]` | Only clobbers |
+| x86-64 | `tmm_reg` | `tmm[0-7]` | Only clobbers |
 | AArch64 | `reg` | `x[0-30]` | `r` |
 | AArch64 | `vreg` | `v[0-31]` | `w` |
 | AArch64 | `vreg_low16` | `v[0-15]` | `x` |
@@ -178,13 +186,15 @@ Here is the list of currently supported register classes:
 | RISC-V | `reg` | `x1`, `x[5-7]`, `x[9-15]`, `x[16-31]` (non-RV32E) | `r` |
 | RISC-V | `freg` | `f[0-31]` | `f` |
 | RISC-V | `vreg` | `v[0-31]` | Only clobbers |
+| LoongArch | `reg` | `$r1`, `$r[4-20]`, `$r[23,30]` | `r` |
+| LoongArch | `freg` | `$f[0-31]` | `f` |
 
 > **Notes**:
 > - On x86 we treat `reg_byte` differently from `reg` because the compiler can allocate `al` and `ah` separately whereas `reg` reserves the whole register.
 >
 > - On x86-64 the high byte registers (e.g. `ah`) are not available in the `reg_byte` register class.
 >
-> - Some register classes are marked as "Only clobbers" which means that they cannot be used for inputs or outputs, only clobbers of the form `out("reg") _` or `lateout("reg") _`.
+> - Some register classes are marked as "Only clobbers" which means that registers in these classes cannot be used for inputs or outputs, only clobbers of the form `out(<explicit register>) _` or `lateout(<explicit register>) _`.
 
 Each register class has constraints on which value types they can be used with.
 This is necessary because the way a value is loaded into a register depends on its type.
@@ -203,8 +213,9 @@ The availability of supported types for a particular register class may depend o
 | x86 | `kreg` | `avx512bw` | `i32`, `i64` |
 | x86 | `mmx_reg` | N/A | Only clobbers |
 | x86 | `x87_reg` | N/A | Only clobbers |
+| x86 | `tmm_reg` | N/A | Only clobbers |
 | AArch64 | `reg` | None | `i8`, `i16`, `i32`, `f32`, `i64`, `f64` |
-| AArch64 | `vreg` | `fp` | `i8`, `i16`, `i32`, `f32`, `i64`, `f64`, <br> `i8x8`, `i16x4`, `i32x2`, `i64x1`, `f32x2`, `f64x1`, <br> `i8x16`, `i16x8`, `i32x4`, `i64x2`, `f32x4`, `f64x2` |
+| AArch64 | `vreg` | `neon` | `i8`, `i16`, `i32`, `f32`, `i64`, `f64`, <br> `i8x8`, `i16x4`, `i32x2`, `i64x1`, `f32x2`, `f64x1`, <br> `i8x16`, `i16x8`, `i32x4`, `i64x2`, `f32x4`, `f64x2` |
 | AArch64 | `preg` | N/A | Only clobbers |
 | ARM | `reg` | None | `i8`, `i16`, `i32`, `f32` |
 | ARM | `sreg` | `vfp2` | `i32`, `f32` |
@@ -215,6 +226,8 @@ The availability of supported types for a particular register class may depend o
 | RISC-V | `freg` | `f` | `f32` |
 | RISC-V | `freg` | `d` | `f64` |
 | RISC-V | `vreg` | N/A | Only clobbers |
+| LoongArch64 | `reg` | None | `i8`, `i16`, `i32`, `i64`, `f32`, `f64` |
+| LoongArch64 | `freg` | None | `f32`, `f64` |
 
 > **Note**: For the purposes of the above table pointers, function pointers and `isize`/`usize` are treated as the equivalent integer type (`i16`/`i32`/`i64` depending on the target).
 
@@ -276,16 +289,27 @@ Here is the list of all supported register aliases:
 | RISC-V | `f[10-17]` | `fa[0-7]` |
 | RISC-V | `f[18-27]` | `fs[2-11]` |
 | RISC-V | `f[28-31]` | `ft[8-11]` |
+| LoongArch | `$r0` | `$zero` |
+| LoongArch | `$r1` | `$ra` |
+| LoongArch | `$r2` | `$tp` |
+| LoongArch | `$r3` | `$sp` |
+| LoongArch | `$r[4-11]` | `$a[0-7]` |
+| LoongArch | `$r[12-20]` | `$t[0-8]` |
+| LoongArch | `$r21` | |
+| LoongArch | `$r22` | `$fp`, `$s9` |
+| LoongArch | `$r[23-31]` | `$s[0-8]` |
+| LoongArch | `$f[0-7]` | `$fa[0-7]` |
+| LoongArch | `$f[8-23]` | `$ft[0-15]` |
+| LoongArch | `$f[24-31]` | `$fs[0-7]` |
 
 Some registers cannot be used for input or output operands:
 
 | Architecture | Unsupported register | Reason |
 | ------------ | -------------------- | ------ |
 | All | `sp` | The stack pointer must be restored to its original value at the end of an asm code block. |
-| All | `bp` (x86), `x29` (AArch64), `x8` (RISC-V) | The frame pointer cannot be used as an input or output. |
+| All | `bp` (x86), `x29` (AArch64), `x8` (RISC-V), `$fp` (LoongArch) | The frame pointer cannot be used as an input or output. |
 | ARM | `r7` or `r11` | On ARM the frame pointer can be either `r7` or `r11` depending on the target. The frame pointer cannot be used as an input or output. |
-| All | `si` (x86-32), `bx` (x86-64), `r6` (ARM), `x19` (AArch64), `x9` (RISC-V) | This is used internally by LLVM as a "base pointer" for functions with complex stack frames. |
-| x86 | `k0` | This is a constant zero register which can't be modified. |
+| All | `si` (x86-32), `bx` (x86-64), `r6` (ARM), `x19` (AArch64), `x9` (RISC-V), `$s8` (LoongArch) | This is used internally by LLVM as a "base pointer" for functions with complex stack frames. |
 | x86 | `ip` | This is the program counter, not a real register. |
 | AArch64 | `xzr` | This is a constant zero register which can't be modified. |
 | AArch64 | `x18` | This is an OS-reserved register on some AArch64 targets. |
@@ -293,6 +317,9 @@ Some registers cannot be used for input or output operands:
 | ARM | `r9` | This is an OS-reserved register on some ARM targets. |
 | RISC-V | `x0` | This is a constant zero register which can't be modified. |
 | RISC-V | `gp`, `tp` | These registers are reserved and cannot be used as inputs or outputs. |
+| LoongArch | `$r0` or `$zero` | This is a constant zero register which can't be modified. |
+| LoongArch | `$r2` or `$tp` | This is reserved for TLS. |
+| LoongArch | `$r21` | This is reserved by the ABI. |
 
 The frame pointer and base pointer registers are reserved for internal use by LLVM. While `asm!` statements cannot explicitly specify the use of reserved registers, in some cases LLVM will allocate one of these reserved registers for `reg` operands. Assembly code making use of reserved registers should be careful since `reg` operands may use the same registers.
 
@@ -339,6 +366,8 @@ The supported modifiers are a subset of LLVM's (and GCC's) [asm template argumen
 | ARM | `qreg` | `e` / `f` | `d0` / `d1` | `e` / `f` |
 | RISC-V | `reg` | None | `x1` | None |
 | RISC-V | `freg` | None | `f0` | None |
+| LoongArch | `reg` | None | `$r1` | None |
+| LoongArch | `freg` | None | `$f0` | None |
 
 > **Notes**:
 > - on ARM `e` / `f`: this prints the low or high doubleword register name of a NEON quad (128-bit) register.
@@ -356,7 +385,7 @@ If all references to an operand already have modifiers then the warning is suppr
 ## ABI clobbers
 
 The `clobber_abi` keyword can be used to apply a default set of clobbers to an `asm!` block.
-This will automatically insert the necessary clobber constraints as needed for calling a function with a particular calling convention: if the calling convention does not fully preserve the value of a register across a call then a `lateout("reg") _` is implicitly added to the operands list.
+This will automatically insert the necessary clobber constraints as needed for calling a function with a particular calling convention: if the calling convention does not fully preserve the value of a register across a call then `lateout("...") _` is implicitly added to the operands list (where the `...` is replaced by the register's name).
 
 `clobber_abi` may be specified any number of times. It will insert a clobber for all unique registers in the union of all specified calling conventions.
 
@@ -366,12 +395,13 @@ The following ABIs can be used with `clobber_abi`:
 
 | Architecture | ABI name | Clobbered registers |
 | ------------ | -------- | ------------------- |
-| x86-32 | `"C"`, `"system"`, `"efiapi"`, `"cdecl"`, `"stdcall"`, `"fastcall"` | `ax`, `cx`, `dx`, `xmm[0-7]`, `mm[0-7]`, `k[1-7]`, `st([0-7])` |
-| x86-64 | `"C"`, `"system"` (on Windows), `"efiapi"`, `"win64"` | `ax`, `cx`, `dx`, `r[8-11]`, `xmm[0-31]`, `mm[0-7]`, `k[1-7]`, `st([0-7])` |
-| x86-64 | `"C"`, `"system"` (on non-Windows), `"sysv64"` | `ax`, `cx`, `dx`, `si`, `di`, `r[8-11]`, `xmm[0-31]`, `mm[0-7]`, `k[1-7]`, `st([0-7])` |
+| x86-32 | `"C"`, `"system"`, `"efiapi"`, `"cdecl"`, `"stdcall"`, `"fastcall"` | `ax`, `cx`, `dx`, `xmm[0-7]`, `mm[0-7]`, `k[0-7]`, `st([0-7])` |
+| x86-64 | `"C"`, `"system"` (on Windows), `"efiapi"`, `"win64"` | `ax`, `cx`, `dx`, `r[8-11]`, `xmm[0-31]`, `mm[0-7]`, `k[0-7]`, `st([0-7])`, `tmm[0-7]` |
+| x86-64 | `"C"`, `"system"` (on non-Windows), `"sysv64"` | `ax`, `cx`, `dx`, `si`, `di`, `r[8-11]`, `xmm[0-31]`, `mm[0-7]`, `k[0-7]`, `st([0-7])`, `tmm[0-7]` |
 | AArch64 | `"C"`, `"system"`, `"efiapi"` | `x[0-17]`, `x18`\*, `x30`, `v[0-31]`, `p[0-15]`, `ffr` |
 | ARM | `"C"`, `"system"`, `"efiapi"`, `"aapcs"` | `r[0-3]`, `r12`, `r14`, `s[0-15]`, `d[0-7]`, `d[16-31]` |
 | RISC-V | `"C"`, `"system"`, `"efiapi"` | `x1`, `x[5-7]`, `x[10-17]`, `x[28-31]`, `f[0-7]`, `f[10-17]`, `f[28-31]`, `v[0-31]` |
+| LoongArch | `"C"`, `"system"`, `"efiapi"` | `$r1`, `$r[4-20]`, `$f[0-23]` |
 
 > Notes:
 > - On AArch64 `x18` only included in the clobber list if it is not considered as a reserved register on the target.
@@ -382,12 +412,15 @@ The list of clobbered registers for each ABI is updated in rustc as architecture
 
 Flags are used to further influence the behavior of the inline assembly block.
 Currently the following options are defined:
-- `pure`: The `asm!` block has no side effects, and its outputs depend only on its direct inputs (i.e. the values themselves, not what they point to) or values read from memory (unless the `nomem` options is also set).
+- `pure`: The `asm!` block has no side effects, must eventually return, and its outputs depend only on its direct inputs (i.e. the values themselves, not what they point to) or values read from memory (unless the `nomem` options is also set).
   This allows the compiler to execute the `asm!` block fewer times than specified in the program (e.g. by hoisting it out of a loop) or even eliminate it entirely if the outputs are not used.
+  The `pure` option must be combined with either the `nomem` or `readonly` options, otherwise a compile-time error is emitted.
 - `nomem`: The `asm!` blocks does not read or write to any memory.
   This allows the compiler to cache the values of modified global variables in registers across the `asm!` block since it knows that they are not read or written to by the `asm!`.
+  The compiler also assumes that this `asm!` block does not perform any kind of synchronization with other threads, e.g. via fences.
 - `readonly`: The `asm!` block does not write to any memory.
   This allows the compiler to cache the values of unmodified global variables in registers across the `asm!` block since it knows that they are not written to by the `asm!`.
+  The compiler also assumes that this `asm!` block does not perform any kind of synchronization with other threads, e.g. via fences.
 - `preserves_flags`: The `asm!` block does not modify the flags register (defined in the rules below).
   This allows the compiler to avoid recomputing the condition flags after the `asm!` block.
 - `noreturn`: The `asm!` block never returns, and its return type is defined as `!` (never).
@@ -402,7 +435,6 @@ Currently the following options are defined:
 
 The compiler performs some additional checks on options:
 - The `nomem` and `readonly` options are mutually exclusive: it is a compile-time error to specify both.
-- The `pure` option must be combined with either the `nomem` or `readonly` options, otherwise a compile-time error is emitted.
 - It is a compile-time error to specify `pure` on an asm block with no outputs or only discarded outputs (`_`).
 - It is a compile-time error to specify `noreturn` on an asm block with outputs.
 
@@ -431,6 +463,7 @@ To avoid undefined behavior, these rules must be followed when using function-sc
 - The compiler cannot assume that the instructions in the asm are the ones that will actually end up executed.
   - This effectively means that the compiler must treat the `asm!` as a black box and only take the interface specification into account, not the instructions themselves.
   - Runtime code patching is allowed, via target-specific mechanisms.
+  - However there is no guarantee that each `asm!` directly corresponds to a single instance of instructions in the object file: the compiler is free to duplicate or deduplicate `asm!` blocks.
 - Unless the `nostack` option is set, asm code is allowed to use stack space below the stack pointer.
   - On entry to the asm block the stack pointer is guaranteed to be suitably aligned (according to the target ABI) for a function call.
   - You are responsible for making sure you don't overflow the stack (e.g. use stack probing to ensure you hit a guard page).
@@ -459,6 +492,8 @@ To avoid undefined behavior, these rules must be followed when using function-sc
   - RISC-V
     - Floating-point exception flags in `fcsr` (`fflags`).
     - Vector extension state (`vtype`, `vl`, `vcsr`).
+  - LoongArch
+    - Floating-point condition flags in `$fcc[0-7]`.
 - On x86, the direction flag (DF in `EFLAGS`) is clear on entry to an asm block and must be clear on exit.
   - Behavior is undefined if the direction flag is set on exiting an asm block.
 - On x86, the x87 floating-point register stack must remain unchanged unless all of the `st([0-7])` registers have been marked as clobbered with `out("st(0)") _, out("st(1)") _, ...`.
@@ -479,6 +514,29 @@ To avoid undefined behavior, these rules must be followed when using function-sc
 
 > **Note**: As a general rule, the flags covered by `preserves_flags` are those which are *not* preserved when performing a function call.
 
+### Correctness and Validity
+
+In addition to all of the previous rules, the string argument to `asm!` must ultimately become---
+after all other arguments are evaluated, formatting is performed, and operands are translated---
+assembly that is both syntactically correct and semantically valid for the target architecture.
+The formatting rules allow the compiler to generate assembly with correct syntax.
+Rules concerning operands permit valid translation of Rust operands into and out of `asm!`.
+Adherence to these rules is necessary, but not sufficient, for the final expanded assembly to be
+both correct and valid. For instance:
+
+- arguments may be placed in positions which are syntactically incorrect after formatting
+- an instruction may be correctly written, but given architecturally invalid operands
+- an architecturally unspecified instruction may be assembled into unspecified code
+- a set of instructions, each correct and valid, may cause undefined behavior if placed in immediate succession
+
+As a result, these rules are _non-exhaustive_. The compiler is not required to check the
+correctness and validity of the initial string nor the final assembly that is generated.
+The assembler may check for correctness and validity but is not required to do so.
+When using `asm!`, a typographical error may be sufficient to make a program unsound,
+and the rules for assembly may include thousands of pages of architectural reference manuals.
+Programmers should exercise appropriate care, as invoking this `unsafe` capability comes with
+assuming the responsibility of not violating rules of both the compiler or the architecture.
+
 ### Directives Support
 
 Inline assembly supports a subset of the directives supported by both GNU AS and LLVM's internal assembler, given as follows.
@@ -492,12 +550,9 @@ The following directives are guaranteed to be supported by the assembler:
 - `.4byte`
 - `.8byte`
 - `.align`
+- `.alt_entry`
 - `.ascii`
 - `.asciz`
-- `.alt_entry`
-- `.balign`
-- `.balignl`
-- `.balignw`
 - `.balign`
 - `.balignl`
 - `.balignw`
@@ -513,17 +568,18 @@ The following directives are guaranteed to be supported by the assembler:
 - `.eqv`
 - `.fill`
 - `.float`
-- `.globl`
 - `.global`
-- `.lcomm`
+- `.globl`
 - `.inst`
+- `.insn`
+- `.lcomm`
 - `.long`
 - `.octa`
 - `.option`
-- `.private_extern`
 - `.p2align`
-- `.pushsection`
 - `.popsection`
+- `.private_extern`
+- `.pushsection`
 - `.quad`
 - `.scl`
 - `.section`

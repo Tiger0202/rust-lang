@@ -22,11 +22,19 @@ Integer operators will panic when they overflow when compiled in debug mode.
 The `-C debug-assertions` and `-C overflow-checks` compiler flags can be used to control this more directly.
 The following things are considered to be overflow:
 
-* When `+`, `*` or `-` create a value greater than the maximum value, or less than the minimum value that can be stored.
-  This includes unary `-` on the smallest value of any signed integer type.
+* When `+`, `*` or binary `-` create a value greater than the maximum value, or less than the minimum value that can be stored.
+* Applying unary `-` to the most negative value of any signed integer type, unless the operand is a [literal expression] (or a literal expression standing alone inside one or more [grouped expressions][grouped expression]).
 * Using `/` or `%`, where the left-hand argument is the smallest integer of a signed integer type and the right-hand argument is `-1`.
   These checks occur even when `-C overflow-checks` is disabled, for legacy reasons.
 * Using `<<` or `>>` where the right-hand argument is greater than or equal to the number of bits in the type of the left-hand argument, or is negative.
+
+> **Note**: The exception for literal expressions behind unary `-` means that forms such as `-128_i8` or `let j: i8 = -(128)` never cause a panic and have the expected value of -128.
+>
+> In these cases, the literal expression already has the most negative value for its type (for example, `128_i8` has the value -128) because integer literals are truncated to their type per the description in [Integer literal expressions][literal expression].
+>
+> Negation of these most negative values leaves the value unchanged due to two's complement overflow conventions.
+>
+> In `rustc`, these most negative expressions are also ignored by the `overflowing_literals` lint check.
 
 ## Borrow operators
 
@@ -70,6 +78,50 @@ let a = &&&&  mut 10;
 let a = && && mut 10;
 let a = & & & & mut 10;
 ```
+
+### Raw address-of operators
+
+Related to the borrow operators are the *raw address-of operators*, which do not have first-class syntax, but are exposed via the macros [`ptr::addr_of!(expr)`][addr_of] and [`ptr::addr_of_mut!(expr)`][addr_of_mut].
+The expression `expr` is evaluated in place expression context.
+`ptr::addr_of!(expr)` then creates a const raw pointer of type `*const T` to the given place, and `ptr::addr_of_mut!(expr)` creates a mutable raw pointer of type `*mut T`.
+
+The raw address-of operators must be used instead of a borrow operator whenever the place expression could evaluate to a place that is not properly aligned or does not store a valid value as determined by its type, or whenever creating a reference would introduce incorrect aliasing assumptions.
+In those situations, using a borrow operator would cause [undefined behavior] by creating an invalid reference, but a raw pointer may still be constructed using an address-of operator.
+
+The following is an example of creating a raw pointer to an unaligned place through a `packed` struct:
+
+```rust
+use std::ptr;
+
+#[repr(packed)]
+struct Packed {
+    f1: u8,
+    f2: u16,
+}
+
+let packed = Packed { f1: 1, f2: 2 };
+// `&packed.f2` would create an unaligned reference, and thus be Undefined Behavior!
+let raw_f2 = ptr::addr_of!(packed.f2);
+assert_eq!(unsafe { raw_f2.read_unaligned() }, 2);
+```
+
+The following is an example of creating a raw pointer to a place that does not contain a valid value:
+
+```rust
+use std::{ptr, mem::MaybeUninit};
+
+struct Demo {
+    field: bool,
+}
+
+let mut uninit = MaybeUninit::<Demo>::uninit();
+// `&uninit.as_mut().field` would create a reference to an uninitialized `bool`,
+// and thus be Undefined Behavior!
+let f1_ptr = unsafe { ptr::addr_of_mut!((*uninit.as_mut_ptr()).field) };
+unsafe { f1_ptr.write(true); }
+let init = unsafe { uninit.assume_init() };
+```
+
 
 ## The dereference operator
 
@@ -191,8 +243,8 @@ The operands of all of these operators are evaluated in [value expression contex
 | `+`    | Addition                |               | Addition       | `std::ops::Add`    | `std::ops::AddAssign`                 |
 | `-`    | Subtraction             |               | Subtraction    | `std::ops::Sub`    | `std::ops::SubAssign`                 |
 | `*`    | Multiplication          |               | Multiplication | `std::ops::Mul`    | `std::ops::MulAssign`                 |
-| `/`    | Division*               |               | Division       | `std::ops::Div`    | `std::ops::DivAssign`                 |
-| `%`    | Remainder**             |               | Remainder      | `std::ops::Rem`    | `std::ops::RemAssign`                 |
+| `/`    | Division*†              |               | Division       | `std::ops::Div`    | `std::ops::DivAssign`                 |
+| `%`    | Remainder**†            |               | Remainder      | `std::ops::Rem`    | `std::ops::RemAssign`                 |
 | `&`    | Bitwise AND             | [Logical AND] |                | `std::ops::BitAnd` | `std::ops::BitAndAssign`              |
 | <code>&#124;</code> | Bitwise OR | [Logical OR]  |                | `std::ops::BitOr`  | `std::ops::BitOrAssign`               |
 | `^`    | Bitwise XOR             | [Logical XOR] |                | `std::ops::BitXor` | `std::ops::BitXorAssign`              |
@@ -205,6 +257,8 @@ The operands of all of these operators are evaluated in [value expression contex
 
 \*\*\* Arithmetic right shift on signed integer types, logical right shift on
 unsigned integer types.
+
+† For integer types, division by zero panics.
 
 Here are examples of these operators being used.
 
@@ -316,7 +370,7 @@ reference types and `mut` or `const` in pointer types.
 | Type of `e`           | `U`                   | Cast performed by `e as U`       |
 |-----------------------|-----------------------|----------------------------------|
 | Integer or Float type | Integer or Float type | Numeric cast                     |
-| C-like enum           | Integer type          | Enum cast                        |
+| Enumeration           | Integer type          | Enum cast                        |
 | `bool` or `char`      | Integer type          | Primitive to integer cast        |
 | `u8`                  | `char`                | `u8` to `char` cast              |
 | `*T`                  | `*V` where `V: Sized` \* | Pointer to pointer cast       |
@@ -378,6 +432,10 @@ halfway between two floating point numbers.
 #### Enum cast
 
 Casts an enum to its discriminant, then uses a numeric cast if needed.
+Casting is limited to the following kinds of enumerations:
+
+* [Unit-only enums]
+* [Field-less enums] without [explicit discriminants], or where only unit-variants have explicit discriminants
 
 #### Primitive to integer cast
 
@@ -419,6 +477,21 @@ unsafe {
 }
 assert_eq!(values[1], 3);
 ```
+
+#### Pointer-to-pointer cast
+
+`*const T` / `*mut T` can be cast to `*const U` / `*mut U` with the following behavior:
+
+- If `T` and `U` are both sized, the pointer is returned unchanged.
+- If `T` and `U` are both unsized, the pointer is also returned unchanged.
+  In particular, the metadata is preserved exactly.
+
+  For instance, a cast from `*const [T]` to `*const [U]` preserves the number of elements.
+  Note that, as a consequence, such casts do not necessarily preserve the size of the pointer's referent
+  (e.g., casting `*const [u16]` to `*const [u8]` will result in a raw pointer which refers to an object of half the size of the original).
+  The same holds for `str` and any compound type whose unsized tail is a slice type,
+  such as `struct Foo(i32, [u8])` or `(u64, Foo)`.
+- If `T` is unsized and `U` is sized, the cast discards all metadata that completes the wide pointer `T` and produces a thin pointer `U` consisting of the data part of the unsized pointer.
 
 ## Assignment expressions
 
@@ -544,7 +617,7 @@ It will then set the value of the assigned operand's place to the value of perfo
 
 > **Note**: This is different than other expressions in that the right operand is evaluated before the left one.
 
-Otherwise, this expression is syntactic sugar for calling the function of the overloading compound assigment trait of the operator (see the table earlier in this chapter).
+Otherwise, this expression is syntactic sugar for calling the function of the overloading compound assignment trait of the operator (see the table earlier in this chapter).
 A mutable borrow of the assigned operand is automatically taken.
 
 For example, the following expression statements in `example` are equivalent:
@@ -580,6 +653,10 @@ See [this test] for an example of using this dependency.
 
 [copies or moves]: ../expressions.md#moved-and-copied-types
 [dropping]: ../destructors.md
+[explicit discriminants]: ../items/enumerations.md#explicit-discriminants
+[field-less enums]: ../items/enumerations.md#field-less-enum
+[grouped expression]: grouped-expr.md
+[literal expression]: literal-expr.md#integer-literal-expressions
 [logical and]: ../types/boolean.md#logical-and
 [logical not]: ../types/boolean.md#logical-not
 [logical or]: ../types/boolean.md#logical-or
@@ -589,12 +666,16 @@ See [this test] for an example of using this dependency.
 [assignee expression]: ../expressions.md#place-expressions-and-value-expressions
 [undefined behavior]: ../behavior-considered-undefined.md
 [unit]: ../types/tuple.md
+[Unit-only enums]: ../items/enumerations.md#unit-only-enum
 [value expression]: ../expressions.md#place-expressions-and-value-expressions
 [temporary value]: ../expressions.md#temporaries
 [this test]: https://github.com/rust-lang/rust/blob/1.58.0/src/test/ui/expr/compound-assignment/eval-order.rs
 [float-float]: https://github.com/rust-lang/rust/issues/15536
 [Function pointer]: ../types/function-pointer.md
 [Function item]: ../types/function-item.md
+[undefined behavior]: ../behavior-considered-undefined.md
+[addr_of]: ../../std/ptr/macro.addr_of.html
+[addr_of_mut]: ../../std/ptr/macro.addr_of_mut.html
 
 [_BorrowExpression_]: #borrow-operators
 [_DereferenceExpression_]: #the-dereference-operator
@@ -611,3 +692,17 @@ See [this test] for an example of using this dependency.
 [_TypeNoBounds_]: ../types.md#type-expressions
 [_RangeExpression_]: ./range-expr.md
 [_UnderscoreExpression_]: ./underscore-expr.md
+
+<script>
+(function() {
+    var fragments = {
+        "#slice-dst-pointer-to-pointer-cast": "operator-expr.html#pointer-to-pointer-cast",
+    };
+    var target = fragments[window.location.hash];
+    if (target) {
+        var url = window.location.toString();
+        var base = url.substring(0, url.lastIndexOf('/'));
+        window.location.replace(base + "/" + target);
+    }
+})();
+</script>

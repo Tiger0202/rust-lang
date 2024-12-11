@@ -17,6 +17,9 @@ interface consists of [associated items], which come in three varieties:
 - [types](associated-items.md#associated-types)
 - [constants](associated-items.md#associated-constants)
 
+The trait declaration defines a trait in the [type namespace] of the module or block where it is located.
+Associated items are defined as members of the trait within their respective namespaces. Associated types are defined in the type namespace. Associated constants and associated functions are defined in the value namespace.
+
 All traits define an implicit type parameter `Self` that refers to "the type
 that is implementing this interface". Traits may also contain additional type
 parameters. These type parameters, including `Self`, may be constrained by
@@ -43,7 +46,7 @@ trait Example {
 }
 ```
 
-Trait functions are not allowed to be [`async`] or [`const`].
+Trait functions are not allowed to be [`const`].
 
 ## Trait bounds
 
@@ -70,9 +73,10 @@ Object safe traits can be the base trait of a [trait object]. A trait is
 * All [supertraits] must also be object safe.
 * `Sized` must not be a [supertrait][supertraits]. In other words, it must not require `Self: Sized`.
 * It must not have any associated constants.
+* It must not have any associated types with generics.
 * All associated functions must either be dispatchable from a trait object or be explicitly non-dispatchable:
-    * Dispatchable functions require:
-        * Not have any type parameters (although lifetime parameters are allowed),
+    * Dispatchable functions must:
+        * Not have any type parameters (although lifetime parameters are allowed).
         * Be a [method] that does not use `Self` except in the type of the receiver.
         * Have a receiver with one of the following types:
             * `&Self` (i.e. `&self`)
@@ -81,7 +85,10 @@ Object safe traits can be the base trait of a [trait object]. A trait is
             * [`Rc<Self>`]
             * [`Arc<Self>`]
             * [`Pin<P>`] where `P` is one of the types above
-        * Does not have a `where Self: Sized` bound (receiver type of `Self` (i.e. `self`) implies this).
+        * Not have an opaque return type; that is,
+            * Not be an `async fn` (which has a hidden `Future` type).
+            * Not have a return position `impl Trait` type (`fn example(&self) -> impl Trait`).
+        * Not have a `where Self: Sized` bound (receiver type of `Self` (i.e. `self`) implies this).
     * Explicitly non-dispatchable functions require:
         * Have a `where Self: Sized` bound (receiver type of `Self` (i.e. `self`) implies this).
 
@@ -341,3 +348,4 @@ fn main() {
 [`Rc<Self>`]: ../special-types-and-traits.md#rct
 [`async`]: functions.md#async-functions
 [`const`]: functions.md#const-functions
+[type namespace]: ../names/namespaces.md

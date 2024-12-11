@@ -5,9 +5,6 @@ into separate namespaces based on the kind of entity the name refers to.
 Namespaces allow the occurrence of a name in one namespace to not conflict
 with the same name in another namespace.
 
-Within a namespace, names are organized in a hierarchy, where each level of
-the hierarchy has its own collection of named entities.
-
 There are several different namespaces that each contain different kinds of
 entities. The usage of a name will look for the declaration of that name in
 different namespaces, based on the context, as described in the [name
@@ -37,7 +34,7 @@ The following is a list of namespaces, with their corresponding entities:
     * [Generic const parameters]
     * [Associated const declarations]
     * [Associated function declarations]
-    * Local bindings — [`let`], [`if let`], [`while let`], [`for`], [`match`]
+    * Local bindings --- [`let`], [`if let`], [`while let`], [`for`], [`match`]
       arms, [function parameters], [closure parameters]
     * Captured [closure] variables
 * Macro Namespace
@@ -50,8 +47,9 @@ The following is a list of namespaces, with their corresponding entities:
     * [Attribute macros]
 * Lifetime Namespace
     * [Generic lifetime parameters]
-* Label Namespace[^rustc-lifetime-shadow]
+* Label Namespace
     * [Loop labels]
+    * [Block labels]
 
 An example of how overlapping names in different namespaces can be used unambiguously:
 
@@ -102,8 +100,6 @@ A [use declaration] has named aliases that it imports into scope, but the
 introduce aliases into multiple namespaces, depending on the item kind being
 imported.
 
-<!-- TODO: describe how `use` works on the use-declarations page, and link to it here. -->
-
 ## Sub-namespaces
 
 The macro namespace is split into two sub-namespaces: one for [bang-style macros] and one for [attributes].
@@ -114,12 +110,6 @@ This prevents one style from shadowing another.
 For example, the [`cfg` attribute] and the [`cfg` macro] are two different entities with the same name in the macro namespace, but they can still be used in their respective context.
 
 It is still an error for a [`use` import] to shadow another macro, regardless of their sub-namespaces.
-
-[^rustc-lifetime-shadow]: `rustc` currently warns about shadowing when using
-    the same name for a label and lifetime in the same scope, but it still
-    treats them independently. This is intended as a future-compatibility
-    warning about a possible extension to the language. See [PR
-    #24162](https://github.com/rust-lang/rust/pull/24162).
 
 [`cfg` attribute]: ../conditional-compilation.md#the-cfg-attribute
 [`cfg` macro]: ../conditional-compilation.md#the-cfg-macro
@@ -138,6 +128,7 @@ It is still an error for a [`use` import] to shadow another macro, regardless of
 [Attribute macros]: ../procedural-macros.md#attribute-macros
 [attributes]: ../attributes.md
 [bang-style macros]: ../macros.md
+[Block labels]: ../expressions/loop-expr.md#labelled-block-expressions
 [boolean]: ../types/boolean.md
 [Built-in attributes]: ../attributes.md#built-in-attributes-index
 [closure parameters]: ../expressions/closure-expr.md

@@ -5,7 +5,7 @@
 > &nbsp;&nbsp; _TypeParamBound_ ( `+` _TypeParamBound_ )<sup>\*</sup> `+`<sup>?</sup>
 >
 > _TypeParamBound_ :\
-> &nbsp;&nbsp; &nbsp;&nbsp; _Lifetime_ | _TraitBound_
+> &nbsp;&nbsp; &nbsp;&nbsp; _Lifetime_ | _TraitBound_ | _UseBound_
 >
 > _TraitBound_ :\
 > &nbsp;&nbsp; &nbsp;&nbsp; `?`<sup>?</sup>
@@ -18,8 +18,22 @@
 >
 > _Lifetime_ :\
 > &nbsp;&nbsp; &nbsp;&nbsp; [LIFETIME_OR_LABEL]\
-> &nbsp;&nbsp; | `'static`\
-> &nbsp;&nbsp; | `'_`
+> &nbsp;&nbsp; | `'static`
+>
+> _UseBound_ :\
+> &nbsp;&nbsp; `use` _UseBoundGenericArgs_
+>
+> _UseBoundGenericArgs_ :\
+> &nbsp;&nbsp; &nbsp;&nbsp; `<` `>` \
+> &nbsp;&nbsp; | `<` \
+> &nbsp;&nbsp; &nbsp;&nbsp; ( _UseBoundGenericArg_ `,`)<sup>\*</sup> \
+> &nbsp;&nbsp; &nbsp;&nbsp; _UseBoundGenericArg_ `,`<sup>?</sup> \
+> &nbsp;&nbsp; &nbsp;&nbsp; `>`
+>
+> _UseBoundGenericArg_ :\
+> &nbsp;&nbsp; &nbsp;&nbsp; _Lifetime_ \
+> &nbsp;&nbsp; | [IDENTIFIER][] \
+> &nbsp;&nbsp; | `Self`
 
 [Trait] and lifetime bounds provide a way for [generic items][generic] to
 restrict which types and lifetimes are used as their parameters. Bounds can be
@@ -27,7 +41,7 @@ provided on any type in a [where clause]. There are also shorter forms for
 certain common cases:
 
 * Bounds written after declaring a [generic parameter][generic]:
-  `fn f<A: Copy>() {}` is the same as `fn f<A> where A: Copy () {}`.
+  `fn f<A: Copy>() {}` is the same as `fn f<A>() where A: Copy {}`.
 * In trait declarations as [supertraits]: `trait Circle : Shape {}` is
   equivalent to `trait Circle where Self : Shape {}`.
 * In trait declarations as bounds on [associated types]:
@@ -121,7 +135,7 @@ For example, if `'a` is an unconstrained lifetime parameter, then `i32: 'static`
 > _ForLifetimes_ :\
 > &nbsp;&nbsp; `for` [_GenericParams_]
 
-Type bounds may be *higher ranked* over lifetimes. These bounds specify a bound
+Trait bounds may be *higher ranked* over lifetimes. These bounds specify a bound
 that is true *for all* lifetimes. For example, a bound such as `for<'a> &'a T:
 PartialEq<i32>` would require an implementation like
 
@@ -145,7 +159,7 @@ fn call_on_ref_zero<F>(f: F) where for<'a> F: Fn(&'a i32) {
 ```
 
 Higher-ranked lifetimes may also be specified just before the trait: the only
-difference is the scope of the lifetime parameter, which extends only to the
+difference is the [scope][hrtb-scopes] of the lifetime parameter, which extends only to the
 end of the following trait instead of the whole bound. This function is
 equivalent to the last one.
 
@@ -156,6 +170,83 @@ fn call_on_ref_zero<F>(f: F) where F: for<'a> Fn(&'a i32) {
 }
 ```
 
+## Implied bounds
+
+Lifetime bounds required for types to be well-formed are sometimes inferred.
+
+```rust
+fn requires_t_outlives_a<'a, T>(x: &'a T) {}
+```
+The type parameter `T` is required to outlive `'a` for the type `&'a T` to be well-formed.
+This is inferred because the function signature contains the type `&'a T` which is
+only valid if `T: 'a` holds.
+
+Implied bounds are added for all parameters and outputs of functions. Inside of `requires_t_outlives_a`
+you can assume `T: 'a` to hold even if you don't explicitly specify this:
+
+```rust
+fn requires_t_outlives_a_not_implied<'a, T: 'a>() {}
+
+fn requires_t_outlives_a<'a, T>(x: &'a T) {
+    // This compiles, because `T: 'a` is implied by
+    // the reference type `&'a T`.
+    requires_t_outlives_a_not_implied::<'a, T>();
+}
+```
+
+```rust,compile_fail,E0309
+# fn requires_t_outlives_a_not_implied<'a, T: 'a>() {}
+fn not_implied<'a, T>() {
+    // This errors, because `T: 'a` is not implied by
+    // the function signature.
+    requires_t_outlives_a_not_implied::<'a, T>();
+}
+```
+
+Only lifetime bounds are implied, trait bounds still have to be explicitly added.
+The following example therefore causes an error:
+
+```rust,compile_fail,E0277
+use std::fmt::Debug;
+struct IsDebug<T: Debug>(T);
+// error[E0277]: `T` doesn't implement `Debug`
+fn doesnt_specify_t_debug<T>(x: IsDebug<T>) {}
+```
+
+Lifetime bounds are also inferred for type definitions and impl blocks for any type:
+
+```rust
+struct Struct<'a, T> {
+    // This requires `T: 'a` to be well-formed
+    // which is inferred by the compiler.
+    field: &'a T,
+}
+
+enum Enum<'a, T> {
+    // This requires `T: 'a` to be well-formed,
+    // which is inferred by the compiler.
+    //
+    // Note that `T: 'a` is required even when only
+    // using `Enum::OtherVariant`.
+    SomeVariant(&'a T),
+    OtherVariant,
+}
+
+trait Trait<'a, T: 'a> {}
+
+// This would error because `T: 'a` is not implied by any type
+// in the impl header.
+//     impl<'a, T> Trait<'a, T> for () {}
+
+// This compiles as `T: 'a` is implied by the self type `&'a T`.
+impl<'a, T> Trait<'a, T> for &'a T {}
+```
+
+## Use bounds
+
+Certain bounds lists may include a `use<..>` bound to control which generic parameters are captured by the `impl Trait` [abstract return type].  See [precise capturing] for more details.
+
+[IDENTIFIER]: identifiers.html
 [LIFETIME_OR_LABEL]: tokens.md#lifetimes-and-loop-labels
 [_GenericParams_]: items/generics.md
 [_TypePath_]: paths.md#paths-in-types
@@ -163,11 +254,14 @@ fn call_on_ref_zero<F>(f: F) where F: for<'a> Fn(&'a i32) {
 [`Copy`]: special-types-and-traits.md#copy
 [`Sized`]: special-types-and-traits.md#sized
 
+[abstract return type]: types/impl-trait.md#abstract-return-types
 [arrays]: types/array.md
 [associated types]: items/associated-items.md#associated-types
+[hrtb-scopes]: names/scopes.md#higher-ranked-trait-bound-scopes
 [supertraits]: items/traits.md#supertraits
 [generic]: items/generics.md
 [higher-ranked lifetimes]: #higher-ranked-trait-bounds
+[precise capturing]: types/impl-trait.md#precise-capturing
 [slice]: types/slice.md
 [Trait]: items/traits.md#trait-bounds
 [trait object]: types/trait-object.md

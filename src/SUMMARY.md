@@ -44,6 +44,7 @@
     - [Code generation](attributes/codegen.md)
     - [Limits](attributes/limits.md)
     - [Type System](attributes/type_system.md)
+    - [Debugger](attributes/debugger.md)
 
 - [Statements and expressions](statements-and-expressions.md)
     - [Statements](statements.md)
@@ -118,8 +119,7 @@
 - [Inline assembly](inline-assembly.md)
 
 - [Unsafety](unsafety.md)
-    - [Unsafe functions](unsafe-functions.md)
-    - [Unsafe blocks](unsafe-blocks.md)
+    - [The `unsafe` keyword](unsafe-keyword.md)
     - [Behavior considered undefined](behavior-considered-undefined.md)
     - [Behavior not considered unsafe](behavior-not-considered-unsafe.md)
 

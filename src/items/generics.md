@@ -12,7 +12,7 @@
 > &nbsp;&nbsp; [LIFETIME_OR_LABEL]&nbsp;( `:` [_LifetimeBounds_] )<sup>?</sup>
 >
 > _TypeParam_ :\
-> &nbsp;&nbsp; [IDENTIFIER]( `:` [_TypeParamBounds_]<sup>?</sup> )<sup>?</sup> ( `=` [_Type_] )<sup>?</sup>
+> &nbsp;&nbsp; [IDENTIFIER]&nbsp;( `:` [_TypeParamBounds_]<sup>?</sup> )<sup>?</sup> ( `=` [_Type_] )<sup>?</sup>
 >
 > _ConstParam_:\
 > &nbsp;&nbsp; `const` [IDENTIFIER] `:` [_Type_] ( `=` _[Block][block]_ | [IDENTIFIER] | -<sup>?</sup>[LITERAL] )<sup>?</sup>
@@ -23,6 +23,7 @@ parameters are listed in angle <span class="parenthetical">brackets (`<...>`)</s
 usually immediately after the name of the item and before its definition. For
 implementations, which don't have a name, they come directly after `impl`.
 The order of generic parameters is restricted to lifetime parameters and then type and const parameters intermixed.
+The same parameter name may not be declared more than once in a _GenericParams_ list.
 
 Some examples of items with type, const, and lifetime parameters:
 
@@ -37,21 +38,20 @@ struct EitherOrderWorks<const N: bool, U>(U);
 Generic parameters are in scope within the item definition where they are
 declared. They are not in scope for items declared within the body of a
 function as described in [item declarations].
+See [generic parameter scopes] for more details.
 
 [References], [raw pointers], [arrays], [slices], [tuples], and
 [function pointers] have lifetime or type parameters as well, but are not
 referred to with path syntax.
 
+`'_` is not a valid lifetime parameter.
+
 ### Const generics
 
-*Const generic parameters* allow items to be generic over constant values. The
-const identifier introduces a name for the constant parameter, and all
-instances of the item must be instantiated with a value of the given type.
+*Const generic parameters* allow items to be generic over constant values.
+The const identifier introduces a name in the [value namespace] for the constant parameter, and all instances of the item must be instantiated with a value of the given type.
 
-<!-- TODO: update above to say "introduces a name in the [value namespace]"
-    once namespaces are added. -->
-
-The only allowed types of const parameters are `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
+The only allowed types of const parameters are `u8`, `u16`, `u32`, `u64`, `u128`, `usize`,
 `i8`, `i16`, `i32`, `i64`, `i128`, `isize`, `char` and `bool`.
 
 Const parameters can be used anywhere a [const item] can be used, with the
@@ -278,6 +278,7 @@ struct Foo<#[my_flexible_clone(unbounded)] H> {
 [slices]: ../types/slice.md
 [associated const]: associated-items.md#associated-constants
 [associated type]: associated-items.md#associated-types
+[attributes]: ../attributes.md
 [block]: ../expressions/block-expr.md
 [const contexts]: ../const_eval.md#const-context
 [const expression]: ../const_eval.md#constant-expressions
@@ -286,6 +287,7 @@ struct Foo<#[my_flexible_clone(unbounded)] H> {
 [functions]: functions.md
 [function pointers]: ../types/function-pointer.md
 [generic implementations]: implementations.md#generic-implementations
+[generic parameter scopes]: ../names/scopes.md#generic-parameter-scopes
 [higher-ranked lifetimes]: ../trait-bounds.md#higher-ranked-trait-bounds
 [implementations]: implementations.md
 [item declarations]: ../statements.md#item-declarations
@@ -302,4 +304,4 @@ struct Foo<#[my_flexible_clone(unbounded)] H> {
 [type aliases]: type-aliases.md
 [type]: ../types.md
 [unions]: unions.md
-[attributes]: ../attributes.md
+[value namespace]: ../names/namespaces.md

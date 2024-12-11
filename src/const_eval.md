@@ -27,7 +27,7 @@ to be run.
 * [Tuple expressions].
 * [Array expressions].
 * [Struct] expressions.
-* [Block expressions], including `unsafe` blocks.
+* [Block expressions], including `unsafe` and `const` blocks.
     * [let statements] and thus irrefutable [patterns], including mutable bindings
     * [assignment expressions]
     * [compound assignment expressions]
@@ -42,9 +42,8 @@ to be run.
 * The [dereference operator] except for raw pointers.
 * [Grouped] expressions.
 * [Cast] expressions, except
-  * pointer to address casts,
-  * function pointer to address casts, and
-  * unsizing casts to trait objects.
+  * pointer to address casts and
+  * function pointer to address casts.
 * Calls of [const functions] and const methods.
 * [loop], [while] and [`while let`] expressions.
 * [if], [`if let`] and [match] expressions.
@@ -60,6 +59,7 @@ A _const context_ is one of the following:
   * [statics]
   * [enum discriminants]
 * A [const generic argument]
+* A [const block]
 
 ## Const Functions
 
@@ -107,6 +107,7 @@ Conversely, the following are possible in a const function, but not in a const c
 [cast]:                 expressions/operator-expr.md#type-cast-expressions
 [closure expressions]:  expressions/closure-expr.md
 [comparison]:           expressions/operator-expr.md#comparison-operators
+[const block]:          expressions/block-expr.md#const-blocks
 [const functions]:      items/functions.md#const-functions
 [const generic argument]: items/generics.md#const-generics
 [const generic parameters]: items/generics.md#const-generics
@@ -114,7 +115,7 @@ Conversely, the following are possible in a const function, but not in a const c
 [Const parameters]:     items/generics.md
 [dereference operator]: expressions/operator-expr.md#the-dereference-operator
 [destructors]:          destructors.md
-[enum discriminants]:   items/enumerations.md#custom-discriminant-values-for-fieldless-enumerations
+[enum discriminants]:   items/enumerations.md#discriminants
 [expression statements]: statements.md#expression-statements
 [expressions]:          expressions.md
 [field]:                expressions/field-expr.md

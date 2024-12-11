@@ -3,10 +3,11 @@
 > **<sup>Syntax</sup>**\
 > _Union_ :\
 > &nbsp;&nbsp; `union` [IDENTIFIER]&nbsp;[_GenericParams_]<sup>?</sup> [_WhereClause_]<sup>?</sup>
->   `{`[_StructFields_] `}`
+>   `{`[_StructFields_]<sup>?</sup> `}`
 
 A union declaration uses the same syntax as a struct declaration, except with
 `union` in place of `struct`.
+A union declaration defines the given name in the [type namespace] of the module or block where it is located.
 
 ```rust
 #[repr(C)]
@@ -19,6 +20,18 @@ union MyUnion {
 The key property of unions is that all fields of a union share common storage.
 As a result, writes to one field of a union can overwrite its other fields, and
 size of a union is determined by the size of its largest field.
+
+Union field types are restricted to the following subset of types:
+- `Copy` types
+- References (`&T` and `&mut T` for arbitrary `T`)
+- `ManuallyDrop<T>` (for arbitrary `T`)
+- Tuples and arrays containing only allowed union field types
+
+This restriction ensures, in particular, that union fields never need to be
+dropped. Like for structs and enums, it is possible to `impl Drop` for a union
+to manually define what happens when it gets dropped.
+
+Unions without any fields are not accepted by the compiler, but can be accepted by macros.
 
 ## Initialization of a union
 
@@ -45,13 +58,13 @@ let f = unsafe { u.f1 };
 ## Reading and writing union fields
 
 Unions have no notion of an "active field". Instead, every union access just
-interprets the storage at the type of the field used for the access. Reading a
+interprets the storage as the type of the field used for the access. Reading a
 union field reads the bits of the union at the field's type. Fields might have a
 non-zero offset (except when [the C representation] is used); in that case the
 bits starting at the offset of the fields are read. It is the programmer's
 responsibility to make sure that the data is valid at the field's type. Failing
 to do so results in [undefined behavior]. For example, reading the value `3`
-through of a field of the [boolean type] is undefined behavior. Effectively,
+from a field of the [boolean type] is undefined behavior. Effectively,
 writing to and then reading from a union with [the C representation] is
 analogous to a [`transmute`] from the type used for writing to the type used for
 reading.
@@ -67,32 +80,13 @@ unsafe {
 }
 ```
 
-Writes to [`Copy`] or [`ManuallyDrop`][ManuallyDrop] union fields do not
-require reads for running destructors, so these writes don't have to be placed
-in `unsafe` blocks
-
-```rust
-# use std::mem::ManuallyDrop;
-union MyUnion { f1: u32, f2: ManuallyDrop<String> }
-let mut u = MyUnion { f1: 1 };
-
-// These do not require `unsafe`.
-u.f1 = 2;
-u.f2 = ManuallyDrop::new(String::from("example"));
-```
-
 Commonly, code using unions will provide safe wrappers around unsafe union
 field accesses.
 
-## Unions and `Drop`
-
-When a union is dropped, it cannot know which of its fields needs to be dropped.
-For this reason, all union fields must either be of a [`Copy`] type or of the
-shape [`ManuallyDrop<_>`][ManuallyDrop].  This ensures that a union does not
-need to drop anything when it goes out of scope.
-
-Like for structs and enums, it is possible to `impl Drop` for a union to
-manually define what happens when it gets dropped.
+In contrast, writes to union fields are safe, since they just overwrite
+arbitrary data, but cannot cause undefined behavior. (Note that union field
+types can never have drop glue, so a union field write will never implicitly
+drop anything.)
 
 ## Pattern matching on unions
 
@@ -186,4 +180,5 @@ checking, etc etc etc).
 [boolean type]: ../types/boolean.md
 [ManuallyDrop]: ../../std/mem/struct.ManuallyDrop.html
 [the C representation]: ../type-layout.md#reprc-unions
+[type namespace]: ../names/namespaces.md
 [undefined behavior]: ../behavior-considered-undefined.html

@@ -2,7 +2,7 @@
 
 > **<sup>Lexer</sup>**\
 > LINE_COMMENT :\
-> &nbsp;&nbsp; &nbsp;&nbsp; `//` (~\[`/` `!`] | `//`) ~`\n`<sup>\*</sup>\
+> &nbsp;&nbsp; &nbsp;&nbsp; `//` (~\[`/` `!` `\n`] | `//`) ~`\n`<sup>\*</sup>\
 > &nbsp;&nbsp; | `//`
 >
 > BLOCK_COMMENT :\
@@ -30,11 +30,11 @@
 > &nbsp;&nbsp; | INNER_BLOCK_DOC
 >
 > _IsolatedCR_ :\
-> &nbsp;&nbsp; _A `\r` not followed by a `\n`_
+> &nbsp;&nbsp; \\r
 
 ## Non-doc comments
 
-Comments in Rust code follow the general C++ style of line (`//`) and
+Comments follow the general C++ style of line (`//`) and
 block (`/* ... */`) comment forms. Nested block comments are supported.
 
 Non-doc comments are interpreted as a form of whitespace.
@@ -42,7 +42,7 @@ Non-doc comments are interpreted as a form of whitespace.
 ## Doc comments
 
 Line doc comments beginning with exactly _three_ slashes (`///`), and block
-doc comments (`/** ... */`), both inner doc comments, are interpreted as a
+doc comments (`/** ... */`), both outer doc comments, are interpreted as a
 special syntax for [`doc` attributes]. That is, they are equivalent to writing
 `#[doc="..."]` around the body of the comment, i.e., `/// Foo` turns into
 `#[doc="Foo"]` and `/** Bar */` turns into `#[doc="Bar"]`.
@@ -53,8 +53,9 @@ that follows.  That is, they are equivalent to writing `#![doc="..."]` around
 the body of the comment. `//!` comments are usually used to document
 modules that occupy a source file.
 
-Isolated CRs (`\r`), i.e. not followed by LF (`\n`), are not allowed in doc
-comments.
+The character `U+000D` (CR) is not allowed in doc comments.
+
+> **Note**:  The sequence `U+000D` (CR) immediately followed by `U+000A` (LF) would have been previously transformed into a single `U+000A` (LF).
 
 ## Examples
 

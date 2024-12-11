@@ -15,6 +15,7 @@
 A *block expression*, or *block*, is a control flow expression and anonymous namespace scope for items and variable declarations.
 As a control flow expression, a block sequentially executes its component non-item declaration statements and then its final optional expression.
 As an anonymous namespace scope, item declarations are only in scope inside the block itself and variables declared by `let` statements are in scope from the next statement until the end of the block.
+See the [scopes] chapter for more details.
 
 The syntax for a block is `{`, then any [inner attributes], then any number of [statements], then an optional expression, called the final operand, and finally a `}`.
 
@@ -103,7 +104,7 @@ Async contexts are established by async blocks as well as the bodies of async fu
 
 Async blocks act like a function boundary, much like closures.
 Therefore, the `?` operator and `return` expressions both affect the output of the future, not the enclosing function or other context.
-That is, `return <expr>` from within a closure will return the result of `<expr>` as the output of the future.
+That is, `return <expr>` from within an async block will return the result of `<expr>` as the output of the future.
 Similarly, if `<expr>?` propagates an error, that error is propagated as the result of the future.
 
 Finally, the `break` and `continue` keywords cannot be used to branch out from an async block.
@@ -112,8 +113,64 @@ Therefore the following is illegal:
 ```rust,compile_fail
 loop {
     async move {
-        break; // This would break out of the loop.
+        break; // error[E0267]: `break` inside of an `async` block
     }
+}
+```
+
+## `const` blocks
+
+> **<sup>Syntax</sup>**\
+> _ConstBlockExpression_ :\
+> &nbsp;&nbsp; `const` _BlockExpression_
+
+A *const block* is a variant of a block expression whose body evaluates at compile-time instead of at runtime.
+
+Const blocks allows you to define a constant value without having to define new [constant items], and thus they are also sometimes referred as *inline consts*.
+It also supports type inference so there is no need to specify the type, unlike [constant items].
+
+Const blocks have the ability to reference generic parameters in scope, unlike [free][free item] constant items.
+They are desugared to constant items with generic parameters in scope (similar to associated constants, but without a trait or type they are associated with).
+For example, this code:
+
+```rust
+fn foo<T>() -> usize {
+    const { std::mem::size_of::<T>() + 1 }
+}
+```
+
+is equivalent to:
+
+```rust
+fn foo<T>() -> usize {
+    {
+        struct Const<T>(T);
+        impl<T> Const<T> {
+            const CONST: usize = std::mem::size_of::<T>() + 1;
+        }
+        Const::<T>::CONST
+    }
+}
+```
+
+If the const block expression is executed at runtime, then the constant is guaranteed to be evaluated, even if its return value is ignored:
+
+```rust
+fn foo<T>() -> usize {
+    // If this code ever gets executed, then the assertion has definitely
+    // been evaluated at compile-time.
+    const { assert!(std::mem::size_of::<T>() > 0); }
+    // Here we can have unsafe code relying on the type being non-zero-sized.
+    /* ... */
+    42
+}
+```
+
+If the const block expression is not executed at runtime, it may or may not be evaluated:
+```rust,compile_fail
+if false {
+    // The panic may or may not occur when the program is built.
+    const { panic!(); }
 }
 ```
 
@@ -123,7 +180,7 @@ loop {
 > _UnsafeBlockExpression_ :\
 > &nbsp;&nbsp; `unsafe` _BlockExpression_
 
-_See [`unsafe` block](../unsafe-blocks.md) for more information on when to use `unsafe`_
+_See [`unsafe` blocks] for more information on when to use `unsafe`_.
 
 A block of code can be prefixed with the `unsafe` keyword to permit [unsafe operations].
 Examples:
@@ -139,6 +196,10 @@ unsafe {
 # unsafe fn an_unsafe_fn() -> i32 { 10 }
 let a = unsafe { an_unsafe_fn() };
 ```
+
+## Labelled block expressions
+
+Labelled block expressions are documented in the [Loops and other breakable expressions] section.
 
 ## Attributes on block expressions
 
@@ -172,15 +233,19 @@ fn is_unix_platform() -> bool {
 [`loop`]: loop-expr.md#infinite-loops
 [`std::ops::Fn`]: ../../std/ops/trait.Fn.html
 [`std::future::Future`]: ../../std/future/trait.Future.html
+[`unsafe` blocks]: ../unsafe-keyword.md#unsafe-blocks-unsafe-
 [`while let`]: loop-expr.md#predicate-pattern-loops
 [`while`]: loop-expr.md#predicate-loops
 [array expressions]: array-expr.md
 [call expressions]: call-expr.md
 [capture modes]: ../types/closure.md#capture-modes
+[constant items]: ../items/constant-items.md
+[free item]: ../glossary.md#free-item
 [function]: ../items/functions.md
 [inner attributes]: ../attributes.md
 [method]: ../items/associated-items.md#methods
 [mutable reference]: ../types/pointer.md#mutables-references-
+[scopes]: ../names/scopes.md
 [shared references]: ../types/pointer.md#shared-references-
 [statement]: ../statements.md
 [statements]: ../statements.md
@@ -189,3 +254,4 @@ fn is_unix_platform() -> bool {
 [tuple expressions]: tuple-expr.md
 [unsafe operations]: ../unsafety.md
 [value expressions]: ../expressions.md#place-expressions-and-value-expressions
+[Loops and other breakable expressions]: loop-expr.md#labelled-block-expressions

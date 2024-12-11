@@ -11,6 +11,8 @@ memory location. Static items have the `static` lifetime, which outlives all
 other lifetimes in a Rust program. Static items do not call [`drop`] at the
 end of the program.
 
+The static declaration defines a static value in the [value namespace] of the module or block where it is located.
+
 The static initializer is a [constant expression] evaluated at compile time.
 Static initializers may refer to other statics.
 
@@ -88,23 +90,30 @@ Mutable statics are still very useful, however. They can be used with C
 libraries and can also be bound from C libraries in an `extern` block.
 
 ```rust
-# fn atomic_add(_: &mut u32, _: u32) -> u32 { 2 }
+# fn atomic_add(_: *mut u32, _: u32) -> u32 { 2 }
 
 static mut LEVELS: u32 = 0;
 
 // This violates the idea of no shared state, and this doesn't internally
 // protect against races, so this function is `unsafe`
-unsafe fn bump_levels_unsafe1() -> u32 {
-    let ret = LEVELS;
-    LEVELS += 1;
-    return ret;
+unsafe fn bump_levels_unsafe() -> u32 {
+    unsafe {
+        let ret = LEVELS;
+        LEVELS += 1;
+        return ret;
+    }
 }
 
-// Assuming that we have an atomic_add function which returns the old value,
-// this function is "safe" but the meaning of the return value may not be what
-// callers expect, so it's still marked as `unsafe`
-unsafe fn bump_levels_unsafe2() -> u32 {
-    return atomic_add(&mut LEVELS, 1);
+// As an alternative to `bump_levels_unsafe`, this function is safe, assuming
+// that we have an atomic_add function which returns the old value. This
+// function is safe only if no other code accesses the static in a non-atomic
+// fashion. If such accesses are possible (such as in `bump_levels_unsafe`),
+// then this would need to be `unsafe` to indicate to the caller that they
+// must still guard against concurrent access.
+fn bump_levels_safe() -> u32 {
+    unsafe {
+        return atomic_add(std::ptr::addr_of_mut!(LEVELS), 1);
+    }
 }
 ```
 
@@ -129,3 +138,4 @@ following are true:
 [IDENTIFIER]: ../identifiers.md
 [_Type_]: ../types.md#type-expressions
 [_Expression_]: ../expressions.md
+[value namespace]: ../names/namespaces.md

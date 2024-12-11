@@ -76,6 +76,8 @@ delimiters for the matcher will match any pair of delimiters. Thus, for
 instance, the matcher `(())` will match `{()}` but not `{{}}`. The character
 `$` cannot be matched or transcribed literally.
 
+### Forwarding a matched fragment
+
 When forwarding a matched fragment to another macro-by-example, matchers in
 the second macro will see an opaque AST of the fragment type. The second macro
 can't use literal tokens to match the fragments in the matcher, only a
@@ -144,6 +146,7 @@ For reasons of backwards compatibility, though `_` [is also an
 expression][_UnderscoreExpression_], a standalone underscore is not matched by
 the `expr` fragment specifier. However, `_` is matched by the `expr` fragment
 specifier when it appears as a subexpression.
+For the same reason, a standalone [const block] is not matched but it is matched when appearing as a subexpression.
 
 > **Edition Differences**: Starting with the 2021 edition, `pat` fragment-specifiers match top-level or-patterns (that is, they accept [_Pattern_]).
 >
@@ -162,9 +165,9 @@ identifiers separated by commas. Nested repetitions are permitted.
 
 The repetition operators are:
 
-- `*` — indicates any number of repetitions.
-- `+` — indicates any number but at least one.
-- `?` — indicates an optional fragment with zero or one occurrences.
+- `*` --- indicates any number of repetitions.
+- `+` --- indicates any number but at least one.
+- `?` --- indicates an optional fragment with zero or one occurrence.
 
 Since `?` represents at most one occurrence, it cannot be used with a
 separator.
@@ -490,6 +493,7 @@ expansions, taking separators into account. This means:
 
 For more detail, see the [formal specification].
 
+[const block]: expressions/block-expr.md#const-blocks
 [Hygiene]: #hygiene
 [IDENTIFIER]: identifiers.md
 [IDENTIFIER_OR_KEYWORD]: identifiers.md

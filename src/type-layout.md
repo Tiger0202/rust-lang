@@ -20,8 +20,10 @@ The alignment of a value can be checked with the [`align_of_val`] function.
 
 The *size* of a value is the offset in bytes between successive elements in an
 array with that item type including alignment padding. The size of a value is
-always a multiple of its alignment. The size of a value can be checked with the
-[`size_of_val`] function.
+always a multiple of its alignment. Note that some types are zero-sized; 0 is
+considered a multiple of any alignment (for example, on some platforms, the type
+`[u16; 0]` has size 0 and alignment 2). The size of a value can be checked with
+the [`size_of_val`] function.
 
 Types where all values have the same size and alignment, and both are known at
 compile time, implement the [`Sized`] trait and can be checked with the
@@ -42,17 +44,20 @@ The size of most primitives is given in this table.
 | `u32` / `i32`     | 4                  |
 | `u64` / `i64`     | 8                  |
 | `u128` / `i128`   | 16                 |
+| `usize` / `isize` | See below          |
 | `f32`             | 4                  |
 | `f64`             | 8                  |
 | `char`            | 4                  |
 
 `usize` and `isize` have a size big enough to contain every address on the
-target platform. For example, on a 32 bit target, this is 4 bytes and on a 64
+target platform. For example, on a 32 bit target, this is 4 bytes, and on a 64
 bit target, this is 8 bytes.
 
-Most primitives are generally aligned to their size, although this is
-platform-specific behavior. In particular, on x86 u64 and f64 are only
-aligned to 32 bits.
+The alignment of primitives is platform-specific.
+In most cases, their alignment is equal to their size, but it may be less.
+In particular, `i128` and `u128` are often aligned to 4 or 8 bytes even though
+their size is 16, and on many 32-bit platforms, `i64`, `u64`, and `f64` are only
+aligned to 4 bytes, not 8.
 
 ## Pointers and References Layout
 
@@ -86,9 +91,9 @@ String slices are a UTF-8 representation of characters that have the same layout
 
 ## Tuple Layout
 
-Tuples do not have any guarantees about their layout.
+Tuples are laid out according to the [`Rust` representation][`Rust`].
 
-The exception to this is the unit tuple (`()`) which is guaranteed as a
+The exception to this is the unit tuple (`()`), which is guaranteed as a
 zero-sized type to have a size of 0 and an alignment of 1.
 
 ## Trait Object Layout
@@ -108,7 +113,7 @@ All user-defined composite types (`struct`s, `enum`s, and `union`s) have a
 *representation* that specifies what the layout is for the type. The possible
 representations for a type are:
 
-- [Default]
+- [`Rust`] (default)
 - [`C`]
 - The [primitive representations]
 - [`transparent`]
@@ -157,12 +162,32 @@ not change the layout of the fields themselves. For example, a struct with a
 `C` representation that contains a struct `Inner` with the default
 representation will not change the layout of `Inner`.
 
-### The Default Representation
+### <a id="the-default-representation"></a> The `Rust` Representation
 
-Nominal types without a `repr` attribute have the default representation.
-Informally, this representation is also called the `rust` representation.
+The `Rust` representation is the default representation for nominal types
+without a `repr` attribute. Using this representation explicitly through a
+`repr` attribute is guaranteed to be the same as omitting the attribute
+entirely.
 
-There are no guarantees of data layout made by this representation.
+The only data layout guarantees made by this representation are those required
+for soundness. They are:
+
+ 1. The fields are properly aligned.
+ 2. The fields do not overlap.
+ 3. The alignment of the type is at least the maximum alignment of its fields.
+
+Formally, the first guarantee means that the offset of any field is divisible by
+that field's alignment. The second guarantee means that the fields can be
+ordered such that the offset plus the size of any field is less than or equal to
+the offset of the next field in the ordering. The ordering does not have to be
+the same as the order in which the fields are specified in the declaration of
+the type.
+
+Be aware that the second guarantee does not imply that the fields have distinct
+addresses: zero-sized types may have the same address as other fields in the
+same struct.
+
+There are no other guarantees of data layout made by this representation.
 
 ### The `C` Representation
 
@@ -501,7 +526,11 @@ assert_eq!(std::mem::size_of::<Enum16>(), 4);
 
 The `align` and `packed` modifiers can be used to respectively raise or lower
 the alignment of `struct`s and `union`s. `packed` may also alter the padding
-between fields.
+between fields (although it will not alter the padding inside of any field).
+On their own, `align` and `packed` do not provide guarantees about the order
+of fields in the layout of a struct or the layout of an enum variant, although
+they may be combined with representations (such as `C`) which do provide such
+guarantees.
 
 The alignment is specified as an integer parameter in the form of
 `#[repr(align(x))]` or `#[repr(packed(x))]`. The alignment value must be a
@@ -515,22 +544,42 @@ For `packed`, if the specified alignment is greater than the type's alignment
 without the `packed` modifier, then the alignment and layout is unaffected.
 The alignments of each field, for the purpose of positioning fields, is the
 smaller of the specified alignment and the alignment of the field's type.
+Inter-field padding is guaranteed to be the minimum required in order to
+satisfy each field's (possibly altered) alignment (although note that, on its
+own, `packed` does not provide any guarantee about field ordering). An
+important consequence of these rules is that a type with `#[repr(packed(1))]`
+(or `#[repr(packed)]`) will have no inter-field padding.
 
 The `align` and `packed` modifiers cannot be applied on the same type and a
 `packed` type cannot transitively contain another `align`ed type. `align` and
-`packed` may only be applied to the [default] and [`C`] representations.
+`packed` may only be applied to the [`Rust`] and [`C`] representations.
 
 The `align` modifier can also be applied on an `enum`.
 When it is, the effect on the `enum`'s alignment is the same as if the `enum`
 was wrapped in a newtype `struct` with the same `align` modifier.
 
-<div class="warning">
-
-***Warning:*** Dereferencing an unaligned pointer is [undefined behavior] and
-it is possible to [safely create unaligned pointers to `packed` fields][27060].
-Like all ways to create undefined behavior in safe Rust, this is a bug.
-
-</div>
+> Note: References to unaligned fields are not allowed because it is [undefined behavior].
+> When fields are unaligned due to an alignment modifier, consider the following options for using references and dereferences:
+>
+> ```rust
+> #[repr(packed)]
+> struct Packed {
+>     f1: u8,
+>     f2: u16,
+> }
+> let mut e = Packed { f1: 1, f2: 2 };
+> // Instead of creating a reference to a field, copy the value to a local variable.
+> let x = e.f2;
+> // Or in situations like `println!` which creates a reference, use braces
+> // to change it to a copy of the value.
+> println!("{}", {e.f2});
+> // Or if you need a pointer, use the unaligned methods for reading and writing
+> // instead of dereferencing the pointer directly.
+> let ptr: *const u16 = std::ptr::addr_of!(e.f2);
+> let value = unsafe { ptr.read_unaligned() };
+> let mut_ptr: *mut u16 = std::ptr::addr_of_mut!(e.f2);
+> unsafe { mut_ptr.write_unaligned(3) }
+> ```
 
 ### The `transparent` Representation
 
@@ -558,14 +607,13 @@ used with any other representation.
 [`Sized`]: ../std/marker/trait.Sized.html
 [`Copy`]: ../std/marker/trait.Copy.html
 [dynamically sized types]: dynamically-sized-types.md
-[field-less enums]: items/enumerations.md#custom-discriminant-values-for-fieldless-enumerations
+[field-less enums]: items/enumerations.md#field-less-enum
 [enumerations]: items/enumerations.md
 [zero-variant enums]: items/enumerations.md#zero-variant-enums
 [undefined behavior]: behavior-considered-undefined.md
-[27060]: https://github.com/rust-lang/rust/issues/27060
 [55149]: https://github.com/rust-lang/rust/issues/55149
 [`PhantomData<T>`]: special-types-and-traits.md#phantomdatat
-[Default]: #the-default-representation
+[`Rust`]: #the-rust-representation
 [`C`]: #the-c-representation
 [primitive representations]: #primitive-representations
 [structs]: items/structs.md

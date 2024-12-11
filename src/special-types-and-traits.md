@@ -80,6 +80,7 @@ types:
 
 * Types with a built-in `Copy` implementation (see above)
 * [Tuples] of `Clone` types
+* [Closures] that only capture values of `Clone` types or capture no values from the environment
 
 ## `Send`
 
@@ -91,6 +92,10 @@ thread to another.
 The [`Sync`] trait indicates that a value of this type is safe to share between
 multiple threads. This trait must be implemented for all types used in
 immutable [`static` items].
+
+## `Termination`
+
+The [`Termination`] trait indicates the acceptable return types for the [main function] and [test functions].
 
 ## Auto traits
 
@@ -131,7 +136,7 @@ UnwindSafe>` is a valid type.
 ## `Sized`
 
 The [`Sized`] trait indicates that the size of this type is known at compile-time; that is, it's not a [dynamically sized type].
-[Type parameters] are `Sized` by default, as are [associated types].
+[Type parameters] (except `Self` in traits) are `Sized` by default, as are [associated types].
 `Sized` is always implemented automatically by the compiler, not by [implementation items].
 These implicit `Sized` bounds may be relaxed by using the special `?Sized` bound.
 
@@ -151,6 +156,7 @@ These implicit `Sized` bounds may be relaxed by using the special `?Sized` bound
 [`std::cmp`]: ../std/cmp/index.html
 [`std::marker::PhantomData<T>`]: ../std/marker/struct.PhantomData.html
 [`std::ops`]: ../std/ops/index.html
+[`Termination`]: ../std/process/trait.Termination.html
 [`UnwindSafe`]: ../std/panic/trait.UnwindSafe.html
 [`Sync`]: ../std/marker/trait.Sync.html
 [`Unpin`]: ../std/marker/trait.Unpin.html
@@ -168,11 +174,13 @@ These implicit `Sized` bounds may be relaxed by using the special `?Sized` bound
 [implementation items]: items/implementations.md
 [indexing expressions]: expressions/array-expr.md#array-and-slice-indexing-expressions
 [interior mutability]: interior-mutability.md
+[main function]: crates-and-source-files.md#main-functions
 [Methods]: items/associated-items.md#associated-functions-and-methods
 [method resolution]: expressions/method-call-expr.md
 [operators]: expressions/operator-expr.md
 [orphan rules]: items/implementations.md#trait-implementation-coherence
 [`static` items]: items/static-items.md
+[test functions]: attributes/testing.md#the-test-attribute
 [the standard library]: ../std/index.html
 [trait object]: types/trait-object.md
 [Tuples]: types/tuple.md

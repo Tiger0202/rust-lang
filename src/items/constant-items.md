@@ -11,12 +11,14 @@ context when used. This includes usage of constants from external crates, and
 non-[`Copy`] types. References to the same constant are not necessarily
 guaranteed to refer to the same memory address.
 
+The constant declaration defines the constant value in the [value namespace] of the module or block where it is located.
+
 Constants must be explicitly typed. The type must have a `'static` lifetime: any
 references in the initializer must have `'static` lifetimes.
 
 Constants may refer to the address of other constants, in which case the
-address will have elided lifetimes where applicable, otherwise – in most cases
-– defaulting to the `static` lifetime. (See [static lifetime
+address will have elided lifetimes where applicable, otherwise -- in most cases
+-- defaulting to the `static` lifetime. (See [static lifetime
 elision].) The compiler is, however, still at liberty to translate the constant
 many times, so the address referred to may not be stable.
 
@@ -89,6 +91,22 @@ m!(const _: () = (););
 // const _: () = ();
 ```
 
+## Evaluation
+
+[Free][free] constants are always [evaluated][const_eval] at compile-time to surface
+panics. This happens even within an unused function:
+
+```rust,compile_fail
+// Compile-time panic
+const PANIC: () = std::unimplemented!();
+
+fn unused_generic_function<T>() {
+    // A failing compile-time assertion
+    const _: () = assert!(usize::BITS == 0);
+}
+```
+
+[const_eval]: ../const_eval.md
 [associated constant]: ../items/associated-items.md#associated-constants
 [constant value]: ../const_eval.md#constant-expressions
 [free]: ../glossary.md#free-item
@@ -99,3 +117,4 @@ m!(const _: () = (););
 [_Type_]: ../types.md#type-expressions
 [_Expression_]: ../expressions.md
 [`Copy`]: ../special-types-and-traits.md#copy
+[value namespace]: ../names/namespaces.md

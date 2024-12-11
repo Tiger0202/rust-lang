@@ -15,13 +15,13 @@ through the usage of either command line flags or the `crate_type` attribute.
 If one or more command line flags are specified, all `crate_type` attributes will
 be ignored in favor of only building the artifacts specified by command line.
 
-* `--crate-type=bin`, `#[crate_type = "bin"]` - A runnable executable will be
+* `--crate-type=bin`, `#![crate_type = "bin"]` - A runnable executable will be
   produced. This requires that there is a `main` function in the crate which
   will be run when the program begins executing. This will link in all Rust and
   native dependencies, producing a single distributable binary.
   This is the default crate type.
 
-* `--crate-type=lib`, `#[crate_type = "lib"]` - A Rust library will be produced.
+* `--crate-type=lib`, `#![crate_type = "lib"]` - A Rust library will be produced.
   This is an ambiguous concept as to what exactly is produced because a library
   can manifest itself in several forms. The purpose of this generic `lib` option
   is to generate the "compiler recommended" style of library. The output library
@@ -30,30 +30,45 @@ be ignored in favor of only building the artifacts specified by command line.
   libraries, and the `lib` type can be seen as an alias for one of them (but the
   actual one is compiler-defined).
 
-* `--crate-type=dylib`, `#[crate_type = "dylib"]` - A dynamic Rust library will
+* `--crate-type=dylib`, `#![crate_type = "dylib"]` - A dynamic Rust library will
   be produced. This is different from the `lib` output type in that this forces
   dynamic library generation. The resulting dynamic library can be used as a
   dependency for other libraries and/or executables. This output type will
   create `*.so` files on Linux, `*.dylib` files on macOS, and `*.dll` files on
   Windows.
 
-* `--crate-type=staticlib`, `#[crate_type = "staticlib"]` - A static system
+* `--crate-type=staticlib`, `#![crate_type = "staticlib"]` - A static system
   library will be produced. This is different from other library outputs in that
   the compiler will never attempt to link to `staticlib` outputs. The
   purpose of this output type is to create a static library containing all of
   the local crate's code along with all upstream dependencies. This output type
   will create `*.a` files on Linux, macOS and Windows (MinGW), and `*.lib` files
   on Windows (MSVC). This format is recommended for use in situations such as
-  linking Rust code into an existing non-Rust application
-  because it will not have dynamic dependencies on other Rust code.
+  linking Rust code into an existing non-Rust application because it will not
+  have dynamic dependencies on other Rust code.
 
-* `--crate-type=cdylib`, `#[crate_type = "cdylib"]` - A dynamic system
+  Note that any dynamic dependencies that the static library may have (such as
+  dependencies on system libraries, or dependencies on Rust libraries that are
+  compiled as dynamic libraries) will have to be specified manually when
+  linking that static library from somewhere. The `--print=native-static-libs` flag may help with this.
+
+  Note that, because the resulting static library contains the code of all the
+  dependencies, including the standard library, and also exports all public
+  symbols of them, linking the static library into an executable or shared
+  library may need special care. In case of a shared library the list of
+  exported symbols will have to be limited via e.g. a linker or symbol version
+  script, exported symbols list (macOS), or module definition file (Windows).
+  Additionally, unused sections can be removed to remove all code of
+  dependencies that is not actually used (e.g. `--gc-sections` or `-dead_strip`
+  for macOS).
+
+* `--crate-type=cdylib`, `#![crate_type = "cdylib"]` - A dynamic system
   library will be produced.  This is used when compiling
   a dynamic library to be loaded from another language.  This output type will
   create `*.so` files on Linux, `*.dylib` files on macOS, and `*.dll` files on
   Windows.
 
-* `--crate-type=rlib`, `#[crate_type = "rlib"]` - A "Rust library" file will be
+* `--crate-type=rlib`, `#![crate_type = "rlib"]` - A "Rust library" file will be
   produced. This is used as an intermediate artifact and can be thought of as a
   "static Rust library". These `rlib` files, unlike `staticlib` files, are
   interpreted by the compiler in future linkage. This essentially means
@@ -61,7 +76,7 @@ be ignored in favor of only building the artifacts specified by command line.
   in dynamic libraries. This form of output is used to produce statically linked
   executables as well as `staticlib` outputs.
 
-* `--crate-type=proc-macro`, `#[crate_type = "proc-macro"]` - The output
+* `--crate-type=proc-macro`, `#![crate_type = "proc-macro"]` - The output
   produced is not specified, but if a `-L` path is provided to it then the
   compiler will recognize the output artifacts as a macro and it can be loaded
   for a program. Crates compiled with this crate type  must only export
@@ -73,7 +88,7 @@ be ignored in favor of only building the artifacts specified by command line.
   being built for a different target.
 
 Note that these outputs are stackable in the sense that if multiple are
-specified, then the compiler will produce each form of output at once without
+specified, then the compiler will produce each form of output without
 having to recompile. However, this only applies for outputs specified by the
 same method. If only `crate_type` attributes are specified, then they will all
 be built, but if one or more `--crate-type` command line flags are specified,
