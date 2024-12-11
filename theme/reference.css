@@ -11,46 +11,46 @@ the parenthetical. So for this example, you'd use
 }
 
 /*
-Warnings and notes:
+Warnings are defined using admonitions in blockquotes:
 
-Write the <div>s on their own line. E.g.
+> [!WARNING]
+> This is bad!
 
-<div class="warning">
-
-Warning: This is bad!
-
-</div>
 */
-main .warning p {
-    padding: 10px 20px;
-    margin: 20px 0;
+main .warning blockquote {
+    padding: 0px;
 }
 
-main .warning p::before {
+main .warning blockquote p {
+    padding: 0px 20px;
+    margin: 10px 0;
+}
+
+main .warning blockquote p:first-child::before {
     content: "⚠️ ";
 }
 
-.light main .warning p,
-.rust main .warning p {
+.light main .warning blockquote,
+.rust main .warning blockquote {
     border: 2px solid red;
     background: #ffcece;
 }
 
-.rust main .warning p {
+.rust main .warning blockquote {
     /* overrides previous declaration */
     border-color: #961717;
 }
 
-.coal main .warning p,
-.navy main .warning p,
-.ayu main .warning p {
+.coal main .warning blockquote,
+.navy main .warning blockquote,
+.ayu main .warning blockquote {
     background: #542626;
 }
 
 /* Make the links higher contrast on dark themes */
-.coal main .warning p a,
-.navy main .warning p a,
-.ayu main .warning p a {
+.coal main .warning blockquote p a,
+.navy main .warning blockquote p a,
+.ayu main .warning blockquote p a {
     color: #80d0d0;
 }
 
@@ -199,4 +199,34 @@ dfn {
 /* Sets the color for [!HISTORY] blockquote admonitions. */
 .history > blockquote {
     background: #f7c0eb;
+}
+
+/* Provides a anchor container for positioning popups. */
+.popup-container {
+    position: relative;
+}
+/* In the test summary page, a convenience class for toggling visibility. */
+.popup-hidden {
+    display: none;
+}
+/* In the test summary page, the styling for the uncovered rule popup. */
+.uncovered-rules-popup {
+    position: absolute;
+    left: -250px;
+    width: 400px;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+/* The popup that shows when viewing tests for a specific rule. */
+.tests-popup {
+    color: var(--fg);
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid;
+    z-index: 1000;
+    padding: 1rem;
 }
